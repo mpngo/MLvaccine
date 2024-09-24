@@ -1,0 +1,164 @@
+---
+title: "Self-Proj"
+author: "Tommy Ngo"
+date: "2024-07-24"
+output: pdf_document
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(kableExtra)
+library(car)
+library(readr)
+library(GGally)
+library(ggpubr)
+library(caret)
+library(knitr)
+library(tidyr)
+library(MASS)
+
+set.seed(1)
+df <- read_csv("C:/Users/pminh/OneDrive/Desktop/Table_1_Use of Oral Polio Vaccine and the Global Incidence of Mother-to-Child Human Immunodeficiency Virus Transmission.csv")
+
+print(df)
+
+df %>% filter(!is.na(Vaccine))
+print(df)
+
+df_clean = na.omit(df)
+df_clean
+```
+
+
+```{r}
+#Exploratory
+
+opv = subset(df_clean, Vaccine == "OPV")
+
+ipv = subset(df_clean, Vaccine == "IPV")
+
+#Box plots
+bp_opv = ggplot(data = opv, aes(x = "", y = log(IncHIV1))) + 
+  geom_boxplot() + 
+  theme_minimal() +
+  labs(title = "Boxplot for OPV vaccine", x = "", y = "IncHIV1")
+
+bp_ipv = ggplot(data = ipv, aes(x = "", y = log(IncHIV1))) + 
+  geom_boxplot() + 
+  theme_minimal() +
+  labs(title = "Boxplot for IPV vaccine", x = "", y = "IncHIV1")
+
+grid.arrange(bp_opv, bp_ipv, nrow = 1, ncol = 2)
+```
+
+```{r}
+hist_ipv = ggplot(data = ipv, aes(x = IncHIV1)) + 
+  geom_histogram(binwidth = 2, fill = "yellow") + 
+  theme_minimal() +
+  labs(title = "Histogram for IPV vaccine", x = "", y = "IncHIV1")
+
+hist_opv = ggplot(data = opv, aes(x = IncHIV1)) + 
+  geom_histogram(binwidth = 10, fill = "blue") + 
+  theme_minimal() +
+  labs(title = "Histogram for OPV vaccine", x = "", y = "IncHIV1")
+
+grid.arrange(hist_opv, hist_ipv, nrow = 1, ncol = 2)
+```
+```{r}
+numerical_data <- df_clean[, sapply(df_clean, is.numeric)]
+
+# Create summary statistics for the numerical columns
+summary_table <- data.frame(
+  Variable = colnames(numerical_data),
+  Mean = sapply(numerical_data, mean, na.rm = TRUE),
+  Median = sapply(numerical_data, median, na.rm = TRUE),
+  StdDev = sapply(numerical_data, sd, na.rm = TRUE),
+  Min = sapply(numerical_data, min, na.rm = TRUE),
+  Max = sapply(numerical_data, max, na.rm = TRUE)
+)
+
+# Use kable to format the summary table
+kable(summary_table, caption = "Summary Table for Numerical Variables", align = "c")
+```
+
+
+
+```{r}
+#Mann-Whitney Test
+
+wilcox_test(log(IncHIV1) ~ as.factor(Vaccine),df_clean, distribution = "exact",alternative = "less")
+
+#alpha =0.05
+#save.me = wilcox_test(IncHIV1 ~ as.factor(Vaccine),df_clean, distribution = "exact",alternative = "two.sided",conf.int = TRUE, conf.level = 1-alpha)
+
+#confint(save.me)
+
+#Group 1=IPV  Group 2=OPV
+#IPV has lower IncHIV1 rate
+```
+```{r}
+#Multiple LogReg
+mlogreg=glm(factor(Vaccine) ~ Population+PopDensity+IncHIV1+PrevHIV+HDI+ARTCov+MedianAge+LifeExpect+GDPperCapita, data=df_clean, family="binomial")
+
+summary(mlogreg)
+
+confusion=table(ifelse(df_clean$Vaccine == "OPV", 1, 0),
+ifelse(mlogreg$fitted.values > 0.5, 1, 0),
+dnn=c("True", "Predicted"))
+
+confusion
+
+sum(diag(confusion))/sum(confusion) # Accuracy
+```
+
+```{r}
+model <- glm(factor(Vaccine) ~ IncHIV1, data = df_clean, family = binomial)
+summary(model)
+
+predicted_probabilities <- predict(model, newdata = df_clean, type = "response")
+
+# Predict class labels
+predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
+
+table(Predicted = predicted_classes, Actual = factor(df_clean$Vaccine))
+
+```
+
+```{r}
+#LDA fitting
+
+lda_fit = lda(as.factor(Vaccine)~Population+PopDensity+IncHIV1+PrevHIV+HDI+ARTCov+MedianAge+LifeExpect+GDPperCapita, data=df_clean)
+
+print(lda_fit)
+
+predictions <- predict(lda_fit, newdata = df_clean)
+predicted_classes <- predictions$class
+confusion_matrix <- table(Predicted = predicted_classes, Actual = df_clean$Vaccine)
+print(confusion_matrix)
+
+# Calculate accuracy
+accuracy <- sum(diag(confusion_matrix)) / sum(confusion_matrix)
+print(accuracy)
+```
+
+```{r}
+#k-fold cross validation
+
+
+set.seed(1) 
+train_control <- trainControl(method = "cv", number = 10)  # 10-fold cross-validation
+
+# Train the LDA model with cross-validation
+lda_model <- train(as.factor(Vaccine)~Population+PopDensity+IncHIV1+PrevHIV+HDI+ARTCov+MedianAge+LifeExpect+GDPperCapita, data=df_clean, method = "lda", trControl = train_control)
+
+logistic_model <- train(as.factor(Vaccine)~Population+PopDensity+IncHIV1+PrevHIV+HDI+ARTCov+MedianAge+LifeExpect+GDPperCapita, data=df_clean, method = "glm", family = binomial, trControl = train_control)
+
+
+print(lda_model)
+print(logistic_model)
+
+```
+
+
